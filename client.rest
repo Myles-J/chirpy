@@ -1,0 +1,12 @@
+
+@host=http://localhost:8080/api
+
+GET {{host}}/healthz
+
+####
+POST {{host}}/validate_chirp
+content-type: application/json
+
+{
+  "body": "Testing"
+}
