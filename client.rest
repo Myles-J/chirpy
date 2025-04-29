@@ -8,5 +8,5 @@ POST {{host}}/validate_chirp
 content-type: application/json
 
 {
-  "body": "Testing"
+  "body": "Testing kerfuffle"
 }

@@ -1,15 +1,27 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync/atomic"
-	"encoding/json"
+	"time"
+
+	"github.com/Myles-J/chirpy/internal/database"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	db             *database.Queries
+	platform       string
 }
 
 func (cfg *apiConfig) handlerMetrics(next http.Handler) http.Handler {
@@ -33,6 +45,15 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		http.Error(w, "Not authorized", http.StatusForbidden)
+		return
+	}
+	err := cfg.db.Reset(context.Background())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	cfg.fileserverHits.Store(0)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -40,20 +61,25 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
-
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
+	badWords := map[string]bool{
+		"kerfuffle": true,
+		"sharbert":  true,
+		"fornax":    true,
+	}
 	type parameters struct {
 		Body string `json:"body"`
 	}
 
 	type response struct {
-		Valid bool `json:"valid"`
-		Error string `json:"error,omitempty"`
+		Valid       bool   `json:"valid"`
+		CleanedBody string `json:"cleaned_body,omitempty"`
+		Error       string `json:"error,omitempty"`
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -74,7 +100,6 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//  Check to see if the body is greater than 140 characters
 	if len(params.Body) > 140 {
 		w.WriteHeader(http.StatusBadRequest)
 		resp := response{
@@ -86,16 +111,55 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	words := strings.Split(params.Body, " ")
+	cleanedWords := make([]string, len(words))
+
+	for i, word := range words {
+		if _, ok := badWords[strings.ToLower(word)]; ok {
+			cleanedWords[i] = "****"
+		} else {
+			cleanedWords[i] = word
+		}
+	}
+
+	cleanedBody := strings.Join(cleanedWords, " ")
+
 	w.WriteHeader(http.StatusOK)
 	resp := response{
-		Valid: true,
+		Valid:       true,
+		CleanedBody: cleanedBody,
 	}
 	jsonResp, _ := json.Marshal(resp)
 	w.Write(jsonResp)
 }
 
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+}
+
 func main() {
-	apiCfg := &apiConfig{}
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	dbUrl := os.Getenv("DB_URL")
+	platform := os.Getenv("PLATFORM")
+	dbConn, err := sql.Open("postgres", dbUrl)
+	if err != nil {
+		log.Fatal("Error opening database", err)
+	}
+	defer dbConn.Close()
+
+	dbQueries := database.New(dbConn)
+
+	apiCfg := &apiConfig{
+		fileserverHits: atomic.Int32{},
+		db:             dbQueries,
+		platform:       platform,
+	}
 
 	mux := http.NewServeMux()
 
@@ -113,8 +177,35 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 
-
 	mux.HandleFunc("POST /api/validate_chirp", validateChirpHandler)
+
+	mux.HandleFunc("POST /api/users", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			Email string `json:"email"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&params)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		dbUser, err := apiCfg.db.CreateUser(context.Background(), params.Email)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		user := User{
+			ID:        dbUser.ID,
+			CreatedAt: dbUser.CreatedAt,
+			UpdatedAt: dbUser.UpdatedAt,
+			Email:     dbUser.Email,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(user)
+	}))
 
 	server := &http.Server{
 		Addr:    ":8080",
