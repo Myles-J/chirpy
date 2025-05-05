@@ -1,0 +1,13 @@
+
+@host=http://localhost:8080/api
+
+GET {{host}}/healthz
+
+####
+POST {{host}}/chirps
+content-type: application/json
+
+{
+  "body": "Testing kerfuffle",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000"
+}
