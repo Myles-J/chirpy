@@ -47,6 +47,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", api.CreateChirpHandler(dbQueries))
 	mux.HandleFunc("POST /api/users", api.CreateUserHandler(dbQueries))
 	mux.HandleFunc("GET /api/chirps", api.ListChirpsHandler(dbQueries))
+	mux.HandleFunc("GET /api/chirps/{id}", api.GetChirpHandler(dbQueries))
 
 	server := &http.Server{
 		Addr:    ":8080",
