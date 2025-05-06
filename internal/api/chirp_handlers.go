@@ -21,70 +21,51 @@ type Chirp struct {
 }
 
 func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
+	badWords := map[string]bool{
+		"kerfuffle": true,
+		"sharbert":  true,
+		"fornax":    true,
+	}
+
+	type parameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	type response struct {
+		Valid       bool   `json:"valid"`
+		CleanedBody string `json:"cleaned_body,omitempty"`
+		Error       string `json:"error,omitempty"`
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
-		badWords := map[string]bool{
-			"kerfuffle": true,
-			"sharbert":  true,
-			"fornax":    true,
-		}
-		type parameters struct {
-			Body   string    `json:"body"`
-			UserID uuid.UUID `json:"user_id"`
-		}
-
-		type response struct {
-			Valid       bool   `json:"valid"`
-			CleanedBody string `json:"cleaned_body,omitempty"`
-			Error       string `json:"error,omitempty"`
-		}
-
 		w.Header().Set("Content-Type", "application/json")
 
-		decoder := json.NewDecoder(r.Body)
-
-		params := parameters{}
-
-		err := decoder.Decode(&params)
-		if err != nil {
+		var params parameters
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			resp := response{
-				Valid: false,
-				Error: "Bad Request",
-			}
-			jsonResp, _ := json.Marshal(resp)
-			w.Write(jsonResp)
+			json.NewEncoder(w).Encode(response{Valid: false, Error: "Bad Request"})
 			return
 		}
 
 		if len(params.Body) > 140 {
 			w.WriteHeader(http.StatusBadRequest)
-			resp := response{
-				Valid: false,
-				Error: "Chirp is too long",
-			}
-			jsonResp, _ := json.Marshal(resp)
-			w.Write(jsonResp)
+			json.NewEncoder(w).Encode(response{Valid: false, Error: "Chirp is too long"})
 			return
 		}
 
 		words := strings.Split(params.Body, " ")
-		cleanedWords := make([]string, len(words))
-
 		for i, word := range words {
 			if _, ok := badWords[strings.ToLower(word)]; ok {
-				cleanedWords[i] = "****"
-			} else {
-				cleanedWords[i] = word
+				words[i] = "****"
 			}
 		}
-
-		cleanedBody := strings.Join(cleanedWords, " ")
+		cleanedBody := strings.Join(words, " ")
 
 		dbChirp, err := db.CreateChirp(context.Background(), database.CreateChirpParams{
 			Body:   cleanedBody,
 			UserID: params.UserID,
 		})
-
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -98,9 +79,31 @@ func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
 			UserID:    dbChirp.UserID,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		// Return the chirp along with a 201 Created status
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(chirp)
+	}
+}
+
+func ListChirpsHandler(db *database.Queries) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dbChirps, err := db.ListChirps(context.Background())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		chirps := make([]Chirp, len(dbChirps))
+		for i, dbChirp := range dbChirps {
+			chirps[i] = Chirp{
+				ID:        dbChirp.ID,
+				CreatedAt: dbChirp.CreatedAt,
+				UpdatedAt: dbChirp.UpdatedAt,
+				Body:      dbChirp.Body,
+				UserID:    dbChirp.UserID,
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(chirps)
 	}
 }
