@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Myles-J/chirpy/internal/database"
+	"github.com/Myles-J/chirpy/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -20,7 +21,8 @@ type User struct {
 func CreateUserHandler(db *database.Queries) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params struct {
-			Email string `json:"email"`
+			Email    string `json:"email"`
+			Password string `json:"password"`
 		}
 		err := json.NewDecoder(r.Body).Decode(&params)
 		if err != nil {
@@ -28,7 +30,16 @@ func CreateUserHandler(db *database.Queries) http.HandlerFunc {
 			return
 		}
 
-		dbUser, err := db.CreateUser(context.Background(), params.Email)
+		hashedPassword, err := auth.HashPassword(params.Password)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		dbUser, err := db.CreateUser(context.Background(), database.CreateUserParams{
+			Email:          params.Email,
+			HashedPassword: hashedPassword,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

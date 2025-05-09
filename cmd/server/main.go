@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
+	err := godotenv.Load("../../.env")
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
@@ -42,6 +42,9 @@ func main() {
 	mux.Handle("/app/assets/", apiCfg.HandlerMetrics(http.StripPrefix("/app/assets/", fs)))
 
 	// Register metrics and reset endpoints
+
+	mux.HandleFunc("POST /api/login", api.LoginHandler(dbQueries))
+
 	mux.HandleFunc("GET /admin/metrics", apiCfg.MetricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.ResetHandler)
 	mux.HandleFunc("POST /api/chirps", api.CreateChirpHandler(dbQueries))
