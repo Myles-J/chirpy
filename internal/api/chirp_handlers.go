@@ -27,12 +27,12 @@ func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
 		"fornax":    true,
 	}
 
-	type parameters struct {
+	type RequestPayload struct {
 		Body   string    `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
 	}
 
-	type response struct {
+	type Response struct {
 		Valid       bool   `json:"valid"`
 		CleanedBody string `json:"cleaned_body,omitempty"`
 		Error       string `json:"error,omitempty"`
@@ -41,20 +41,20 @@ func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		var params parameters
-		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		var requestPayload RequestPayload
+		if err := json.NewDecoder(r.Body).Decode(&requestPayload); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(response{Valid: false, Error: "Bad Request"})
+			json.NewEncoder(w).Encode(Response{Valid: false, Error: "Bad Request"})
 			return
 		}
 
-		if len(params.Body) > 140 {
+		if len(requestPayload.Body) > 140 {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(response{Valid: false, Error: "Chirp is too long"})
+			json.NewEncoder(w).Encode(Response{Valid: false, Error: "Chirp is too long"})
 			return
 		}
 
-		words := strings.Split(params.Body, " ")
+		words := strings.Split(requestPayload.Body, " ")
 		for i, word := range words {
 			if _, ok := badWords[strings.ToLower(word)]; ok {
 				words[i] = "****"
@@ -64,7 +64,7 @@ func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
 
 		dbChirp, err := db.CreateChirp(context.Background(), database.CreateChirpParams{
 			Body:   cleanedBody,
-			UserID: params.UserID,
+			UserID: requestPayload.UserID,
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
