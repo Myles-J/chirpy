@@ -7,6 +7,8 @@ package database
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -53,5 +55,24 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Email,
 		&i.HashedPassword,
 	)
+	return i, err
+}
+
+const getUserFromRefreshToken = `-- name: GetUserFromRefreshToken :one
+SELECT rt.token, u.id, u.email FROM users u
+JOIN refresh_tokens rt ON u.id = rt.user_id
+WHERE rt.token = $1 AND rt.expires_at > NOW() AND rt.revoked_at IS NULL
+`
+
+type GetUserFromRefreshTokenRow struct {
+	Token string
+	ID    uuid.UUID
+	Email string
+}
+
+func (q *Queries) GetUserFromRefreshToken(ctx context.Context, token string) (GetUserFromRefreshTokenRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserFromRefreshToken, token)
+	var i GetUserFromRefreshTokenRow
+	err := row.Scan(&i.Token, &i.ID, &i.Email)
 	return i, err
 }

@@ -9,19 +9,24 @@ import (
 	"github.com/Myles-J/chirpy/internal/database"
 )
 
+// ApiConfig holds the configuration for the API.
 type ApiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
 	platform       string
+	jwtSecret      string
 }
 
-func NewApiConfig(db *database.Queries, platform string) *ApiConfig {
+// NewApiConfig creates a new ApiConfig instance.
+func NewApiConfig(db *database.Queries, platform string, jwtSecret string) *ApiConfig {
 	return &ApiConfig{
-		db:       db,
-		platform: platform,
+		db:        db,
+		platform:  platform,
+		jwtSecret: jwtSecret,
 	}
 }
 
+// HandlerMetrics increments the fileserver hits counter.
 func (cfg *ApiConfig) HandlerMetrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Add(1)
@@ -29,6 +34,7 @@ func (cfg *ApiConfig) HandlerMetrics(next http.Handler) http.Handler {
 	})
 }
 
+// MetricsHandler returns the metrics page.
 func (cfg *ApiConfig) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -42,6 +48,8 @@ func (cfg *ApiConfig) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	`, cfg.fileserverHits.Load()))
 }
 
+// ResetHandler resets the fileserver hits counter.
+// It requires the platform to be "dev" to be authorized.
 func (cfg *ApiConfig) ResetHandler(w http.ResponseWriter, r *http.Request) {
 	if cfg.platform != "dev" {
 		http.Error(w, "Not authorized", http.StatusForbidden)

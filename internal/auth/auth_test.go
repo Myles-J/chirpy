@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -109,25 +110,25 @@ func TestCheckPassword(t *testing.T) {
 func TestMakeJWT(t *testing.T) {
 	// Define a slice of test cases
 	tests := []struct {
-		name        string
-		userID      uuid.UUID
-		tokenSecret string
-		expiresIn   time.Duration
-		expectErr   bool
+		name      string
+		userID    uuid.UUID
+		jwtSecret string
+		expiresIn time.Duration
+		expectErr bool
 	}{
 		{
-			name:        "Standard JWT",
-			userID:      uuid.New(),
-			tokenSecret: "a-secure-secret-for-test-make-jwt-1",
-			expiresIn:   15 * time.Minute,
-			expectErr:   false,
+			name:      "Standard JWT",
+			userID:    uuid.New(),
+			jwtSecret: "a-secure-secret-for-test-make-jwt-1",
+			expiresIn: 15 * time.Minute,
+			expectErr: false,
 		},
 		{
-			name:        "Different User ID",
-			userID:      uuid.New(),
-			tokenSecret: "a-secure-secret-for-test-make-jwt-2",
-			expiresIn:   5 * time.Hour,
-			expectErr:   false,
+			name:      "Different User ID",
+			userID:    uuid.New(),
+			jwtSecret: "a-secure-secret-for-test-make-jwt-2",
+			expiresIn: 5 * time.Hour,
+			expectErr: false,
 		},
 		// You could add cases for invalid secret lengths if the library
 		// had specific error returns for that, but it typically doesn't for HMAC
@@ -136,7 +137,7 @@ func TestMakeJWT(t *testing.T) {
 	// Iterate over the test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tokenString, err := MakeJWT(tt.userID, tt.tokenSecret, tt.expiresIn)
+			tokenString, err := MakeJWT(tt.userID, tt.jwtSecret, tt.expiresIn)
 
 			if tt.expectErr {
 				if err == nil {
@@ -159,19 +160,19 @@ func TestMakeJWT(t *testing.T) {
 
 // TestValidateJWT tests the ValidateJWT function using test cases.
 func TestValidateJWT(t *testing.T) {
-	tokenSecret := "my-secure-test-secret-at-least-32-bytes-for-validate" // Strong secret
+	jwtSecret := "my-secure-test-secret-at-least-32-bytes-for-validate" // Strong secret
 
 	// Generate a valid token for testing
 	validUserID := uuid.New()
 	validExpiresIn := 1 * time.Minute
-	validToken, err := MakeJWT(validUserID, tokenSecret, validExpiresIn)
+	validToken, err := MakeJWT(validUserID, jwtSecret, validExpiresIn)
 	if err != nil {
 		t.Fatalf("Failed to make a valid token for test cases: %v", err)
 	}
 
 	// Generate an expired token for testing
 	expiredExpiresIn := -1 * time.Minute // Expires 1 minute ago
-	expiredToken, err := MakeJWT(validUserID, tokenSecret, expiredExpiresIn)
+	expiredToken, err := MakeJWT(validUserID, jwtSecret, expiredExpiresIn)
 	if err != nil {
 		t.Fatalf("Failed to make an expired token for test cases: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestValidateJWT(t *testing.T) {
 		Issuer:    "chirpy",
 		Subject:   "not-a-uuid", // Invalid UUID string
 	})
-	malformedTokenString, err := malformedClaimsToken.SignedString([]byte(tokenSecret))
+	malformedTokenString, err := malformedClaimsToken.SignedString([]byte(jwtSecret))
 	if err != nil {
 		t.Fatalf("Failed to sign malformed claims token for test cases: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestValidateJWT(t *testing.T) {
 	tests := []struct {
 		name           string
 		tokenString    string
-		tokenSecret    string
+		jwtSecret      string
 		expectedUserID uuid.UUID
 		expectedErr    error // The specific error we expect, or nil for success
 		expectErr      bool
@@ -203,7 +204,7 @@ func TestValidateJWT(t *testing.T) {
 		{
 			name:           "Valid Token",
 			tokenString:    validToken,
-			tokenSecret:    tokenSecret,
+			jwtSecret:      jwtSecret,
 			expectedUserID: validUserID,
 			expectedErr:    nil,
 			expectErr:      false,
@@ -211,7 +212,7 @@ func TestValidateJWT(t *testing.T) {
 		{
 			name:           "Invalid Secret",
 			tokenString:    validToken,
-			tokenSecret:    "wrong-secret",
+			jwtSecret:      "wrong-secret",
 			expectedUserID: uuid.Nil, // Expecting nil UUID on error
 			expectedErr:    nil,      // Expecting an error, but not checking a specific type
 			expectErr:      true,
@@ -220,7 +221,7 @@ func TestValidateJWT(t *testing.T) {
 		{
 			name:           "Expired Token",
 			tokenString:    expiredToken,
-			tokenSecret:    tokenSecret,
+			jwtSecret:      jwtSecret,
 			expectedUserID: uuid.Nil, // Expecting nil UUID on error
 			expectedErr:    nil,      // Expecting an error, but not checking a specific type
 			expectErr:      true,
@@ -229,7 +230,7 @@ func TestValidateJWT(t *testing.T) {
 		{
 			name:           "Token with Malformed Subject",
 			tokenString:    malformedTokenString,
-			tokenSecret:    tokenSecret,
+			jwtSecret:      jwtSecret,
 			expectedUserID: uuid.Nil,         // Expecting nil UUID on error
 			expectedErr:    expectedParseErr, // Expecting the error returned by uuid.Parse
 			expectErr:      true,
@@ -237,7 +238,7 @@ func TestValidateJWT(t *testing.T) {
 		{
 			name:           "Empty Token String",
 			tokenString:    "",
-			tokenSecret:    tokenSecret,
+			jwtSecret:      jwtSecret,
 			expectedUserID: uuid.Nil, // Expecting nil UUID on error
 			expectedErr:    nil,      // Expecting an error, but not checking a specific type
 			expectErr:      true,
@@ -248,7 +249,7 @@ func TestValidateJWT(t *testing.T) {
 	// Iterate over the test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			validatedUserID, err := ValidateJWT(tt.tokenString, tt.tokenSecret)
+			validatedUserID, err := ValidateJWT(tt.tokenString, tt.jwtSecret)
 
 			if tt.expectErr {
 				if err == nil {
@@ -272,5 +273,78 @@ func TestValidateJWT(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGetBearerToken tests the GetBearerToken function using test cases.
+func TestGetBearerToken(t *testing.T) {
+	// Define a slice of test cases
+	tests := []struct {
+		name          string
+		headers       http.Header
+		expectedToken string
+		expectErr     bool
+	}{
+		{ // Added the missing opening brace
+			name:          "No Authorization header",
+			headers:       http.Header{},
+			expectedToken: "", // Expected token should be empty on error
+			expectErr:     true,
+		}, // Added the missing closing brace
+		{
+			name: "Malformed Authorization header (no Bearer)",
+			headers: http.Header{
+				"Authorization": []string{"Basic abcdef"},
+			},
+			expectedToken: "", // Expected token should be empty on error
+			expectErr:     true,
+		},
+		{
+			name: "Valid Bearer token",
+			headers: http.Header{
+				"Authorization": []string{"Bearer my-token"},
+			},
+			expectedToken: "my-token",
+			expectErr:     false,
+		},
+	}
+
+	// Iterate over the test cases
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { // t.Run allows for subtests with names
+			token, err := GetBearerToken(tt.headers)
+
+			if tt.expectErr {
+				// If we expect an error
+				if err == nil {
+					t.Errorf("Expected an error, but got nil")
+				}
+				// When an error is expected, the returned token should typically be an empty string.
+				if token != tt.expectedToken {
+					t.Errorf("Expected token %s on error, but got %s", tt.expectedToken, token)
+				}
+				// Optional: You could also check the specific error message or type here
+				// if you want to be more precise about which error you expect.
+			} else {
+				// If we do NOT expect an error
+				if err != nil {
+					t.Errorf("Expected no error, but got %v", err)
+				}
+				// Only check the token value when no error is expected
+				if token != tt.expectedToken {
+					t.Errorf("Expected token %s, but got %s", tt.expectedToken, token)
+				}
+			}
+		})
+	}
+}
+
+func TestMakeRefreshToken(t *testing.T) {
+	token, err := MakeRefreshToken()
+	if err != nil {
+		t.Fatalf("Failed to make a refresh token: %v", err)
+	}
+	if len(token) != 64 {
+		t.Errorf("Expected token length to be 64, but got %d", len(token))
 	}
 }

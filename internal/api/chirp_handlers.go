@@ -3,13 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/Myles-J/chirpy/internal/auth"
 	"github.com/Myles-J/chirpy/internal/database"
+	"github.com/Myles-J/chirpy/internal/utils"
 )
 
 type Chirp struct {
@@ -20,11 +24,12 @@ type Chirp struct {
 	UserID    uuid.UUID `json:"user_id"`
 }
 
-func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
-	badWords := map[string]bool{
-		"kerfuffle": true,
-		"sharbert":  true,
-		"fornax":    true,
+func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFunc {
+	const maxChirpLength = 140
+	badWords := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
 	}
 
 	type RequestPayload struct {
@@ -32,55 +37,50 @@ func CreateChirpHandler(db *database.Queries) http.HandlerFunc {
 		UserID uuid.UUID `json:"user_id"`
 	}
 
-	type Response struct {
-		Valid       bool   `json:"valid"`
-		CleanedBody string `json:"cleaned_body,omitempty"`
-		Error       string `json:"error,omitempty"`
-	}
-
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		token, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+			return
+		}
+
+		userId, err := auth.ValidateJWT(token, tokenSecret)
+		if err != nil {
+			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+			return
+		}
+
+		fmt.Println("userId", userId)
 
 		var requestPayload RequestPayload
 		if err := json.NewDecoder(r.Body).Decode(&requestPayload); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{Valid: false, Error: "Bad Request"})
+			utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", err)
 			return
 		}
 
-		if len(requestPayload.Body) > 140 {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{Valid: false, Error: "Chirp is too long"})
+		if len(requestPayload.Body) > maxChirpLength {
+			utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", errors.New("chirp is too long"))
 			return
 		}
 
-		words := strings.Split(requestPayload.Body, " ")
-		for i, word := range words {
-			if _, ok := badWords[strings.ToLower(word)]; ok {
-				words[i] = "****"
-			}
-		}
-		cleanedBody := strings.Join(words, " ")
+		cleanedBody := getCleanedBody(requestPayload.Body, badWords)
 
 		dbChirp, err := db.CreateChirp(context.Background(), database.CreateChirpParams{
 			Body:   cleanedBody,
-			UserID: requestPayload.UserID,
+			UserID: userId,
 		})
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			utils.RespondWithError(w, http.StatusInternalServerError, "Could not create chirp", err)
 			return
 		}
 
-		chirp := Chirp{
+		utils.RespondWithJSON(w, http.StatusCreated, Chirp{
 			ID:        dbChirp.ID,
 			CreatedAt: dbChirp.CreatedAt,
 			UpdatedAt: dbChirp.UpdatedAt,
 			Body:      dbChirp.Body,
-			UserID:    dbChirp.UserID,
-		}
-
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(chirp)
+			UserID:    userId,
+		})
 	}
 }
 
@@ -88,7 +88,7 @@ func ListChirpsHandler(db *database.Queries) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dbChirps, err := db.ListChirps(context.Background())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
 			return
 		}
 
@@ -103,24 +103,22 @@ func ListChirpsHandler(db *database.Queries) http.HandlerFunc {
 			}
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(chirps)
+		utils.RespondWithJSON(w, http.StatusOK, chirps)
 	}
 }
-
 
 func GetChirpHandler(db *database.Queries) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := r.PathValue("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", err)
 			return
 		}
 
 		dbChirp, err := db.GetChirp(context.Background(), id)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			utils.RespondWithError(w, http.StatusNotFound, "Chirp not found", err)
 			return
 		}
 
@@ -132,7 +130,18 @@ func GetChirpHandler(db *database.Queries) http.HandlerFunc {
 			UserID:    dbChirp.UserID,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(chirp)
+		utils.RespondWithJSON(w, http.StatusOK, chirp)
 	}
+}
+
+func getCleanedBody(body string, badWords map[string]struct{}) string {
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		loweredWord := strings.ToLower(word)
+		if _, ok := badWords[loweredWord]; ok {
+			words[i] = "****"
+		}
+	}
+	cleaned := strings.Join(words, " ")
+	return cleaned
 }
