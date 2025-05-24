@@ -20,7 +20,12 @@ func LoginHandler(db *database.Queries, jwtSecret string) http.HandlerFunc {
 		err := json.NewDecoder(r.Body).Decode(&requestPayload)
 		if err != nil {
 			// Client sent a request body that couldn't be parsed.
-			utils.RespondWithError(w, http.StatusBadRequest, "Invalid request format. Please ensure the request body is valid JSON with 'email' and 'password' fields.", err)
+			utils.RespondWithError(
+				w,
+				http.StatusBadRequest,
+				"Invalid request format. Please ensure the request body is valid JSON with 'email' and 'password' fields.",
+				err,
+			)
 			return
 		}
 
@@ -42,14 +47,24 @@ func LoginHandler(db *database.Queries, jwtSecret string) http.HandlerFunc {
 		accessToken, err := auth.MakeJWT(dbUser.ID, jwtSecret, 1*time.Hour)
 		if err != nil {
 			// Error creating access token. This is an internal system issue.
-			utils.RespondWithError(w, http.StatusInternalServerError, "Could not generate access token. Please try again later.", err)
+			utils.RespondWithError(
+				w,
+				http.StatusInternalServerError,
+				"Could not generate access token. Please try again later.",
+				err,
+			)
 			return
 		}
 
 		refreshToken, err := auth.MakeRefreshToken()
 		if err != nil {
 			// Error creating refresh token. This is an internal system issue.
-			utils.RespondWithError(w, http.StatusInternalServerError, "Could not generate refresh token. Please try again later.", err)
+			utils.RespondWithError(
+				w,
+				http.StatusInternalServerError,
+				"Could not generate refresh token. Please try again later.",
+				err,
+			)
 			return
 		}
 
@@ -60,7 +75,12 @@ func LoginHandler(db *database.Queries, jwtSecret string) http.HandlerFunc {
 		})
 		if err != nil {
 			// Error saving refresh token. This is likely a database or system issue.
-			utils.RespondWithError(w, http.StatusInternalServerError, "Could not save refresh token. Please try again later.", err)
+			utils.RespondWithError(
+				w,
+				http.StatusInternalServerError,
+				"Could not save refresh token. Please try again later.",
+				err,
+			)
 			return
 		}
 

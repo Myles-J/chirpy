@@ -3,7 +3,6 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -87,7 +86,6 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 
 func GetBearerToken(headers http.Header) (string, error) {
 	authHeader := headers.Get("Authorization")
-	slog.Info(authHeader)
 	if authHeader == "" {
 		return "", ErrNoAuthHeaderIncluded
 	}

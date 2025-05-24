@@ -9,6 +9,7 @@ import (
 
 	"github.com/Myles-J/chirpy/internal/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testPayload struct {
@@ -25,7 +26,7 @@ func TestRespondWithJSON(t *testing.T) {
 
 	var resp testPayload
 	err := json.Unmarshal(recorder.Body.Bytes(), &resp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, payload.Message, resp.Message)
 }
 
@@ -48,6 +49,6 @@ func TestRespondWithError(t *testing.T) {
 
 	var resp map[string]string
 	e := json.Unmarshal(recorder.Body.Bytes(), &resp)
-	assert.NoError(t, e)
+	require.NoError(t, e)
 	assert.Equal(t, msg, resp["error"])
 }

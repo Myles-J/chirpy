@@ -43,15 +43,15 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 			return
 		}
 
-		userID, err := auth.ValidateJWT(token, tokenSecret)
-		if err != nil {
-			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+		userID, validateJWTError := auth.ValidateJWT(token, tokenSecret)
+		if validateJWTError != nil {
+			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", validateJWTError)
 			return
 		}
 
 		var requestPayload RequestPayload
-		if err := json.NewDecoder(r.Body).Decode(&requestPayload); err != nil {
-			utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", err)
+		if decodeErr := json.NewDecoder(r.Body).Decode(&requestPayload); decodeErr != nil {
+			utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", decodeErr)
 			return
 		}
 
@@ -62,12 +62,12 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 
 		cleanedBody := getCleanedBody(requestPayload.Body, badWords)
 
-		dbChirp, err := db.CreateChirp(context.Background(), database.CreateChirpParams{
+		dbChirp, createChirpErr := db.CreateChirp(context.Background(), database.CreateChirpParams{
 			Body:   cleanedBody,
 			UserID: userID,
 		})
-		if err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Could not create chirp", err)
+		if createChirpErr != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Could not create chirp", createChirpErr)
 			return
 		}
 
@@ -82,7 +82,7 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 }
 
 func ListChirpsHandler(db *database.Queries) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		dbChirps, err := db.ListChirps(context.Background())
 		if err != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)

@@ -31,9 +31,9 @@ func main() {
 	jwtSecret := utils.MustGetenv("JWT_SECRET")
 
 	// Database setup
-	dbConn, err := sql.Open("postgres", dbURL)
-	if err != nil {
-		log.Fatal("Error opening database:", err)
+	dbConn, dbOpenErr := sql.Open("postgres", dbURL)
+	if dbOpenErr != nil {
+		log.Fatal("Error opening database:", dbOpenErr)
 	}
 	defer dbConn.Close()
 
@@ -76,5 +76,7 @@ func main() {
 	}
 
 	log.Printf("Starting server on port %s", port)
-	log.Fatal(server.ListenAndServe())
+	if err := server.ListenAndServe(); err != nil {
+		log.Printf("Server error: %v", err)
+	}
 }
