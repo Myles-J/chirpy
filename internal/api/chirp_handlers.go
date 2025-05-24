@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -44,13 +43,11 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 			return
 		}
 
-		userId, err := auth.ValidateJWT(token, tokenSecret)
+		userID, err := auth.ValidateJWT(token, tokenSecret)
 		if err != nil {
 			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
 			return
 		}
-
-		fmt.Println("userId", userId)
 
 		var requestPayload RequestPayload
 		if err := json.NewDecoder(r.Body).Decode(&requestPayload); err != nil {
@@ -67,7 +64,7 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 
 		dbChirp, err := db.CreateChirp(context.Background(), database.CreateChirpParams{
 			Body:   cleanedBody,
-			UserID: userId,
+			UserID: userID,
 		})
 		if err != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Could not create chirp", err)
@@ -79,7 +76,7 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 			CreatedAt: dbChirp.CreatedAt,
 			UpdatedAt: dbChirp.UpdatedAt,
 			Body:      dbChirp.Body,
-			UserID:    userId,
+			UserID:    userID,
 		})
 	}
 }

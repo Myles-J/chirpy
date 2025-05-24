@@ -4,61 +4,56 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/Myles-J/chirpy/internal/api"
 	"github.com/Myles-J/chirpy/internal/config"
 	"github.com/Myles-J/chirpy/internal/database"
+
+	"github.com/Myles-J/chirpy/internal/utils"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
+const readHeaderTimeout = 5 * time.Second
+
 func main() {
 	const port = "8080"
+
 	// Load environment variables
-	err := godotenv.Load("../../.env")
-	if err != nil {
+	if err := godotenv.Load("../../.env"); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	// Database setup
-	dbUrl := os.Getenv("DB_URL")
-	if dbUrl == "" {
-		log.Fatal("DB_URL is not set")
-	}
-	platform := os.Getenv("PLATFORM")
-	if platform == "" {
-		log.Fatal("PLATFORM is not set")
-	}
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET is not set")
-	}
+	// Get required environment variables
+	dbURL := utils.MustGetenv("DB_URL")
+	platform := utils.MustGetenv("PLATFORM")
+	jwtSecret := utils.MustGetenv("JWT_SECRET")
 
-	dbConn, err := sql.Open("postgres", dbUrl)
+	// Database setup
+	dbConn, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		log.Fatal("Error opening database", err)
+		log.Fatal("Error opening database:", err)
 	}
 	defer dbConn.Close()
 
 	dbQueries := database.New(dbConn)
-	apiCfg := config.NewApiConfig(dbQueries, platform, jwtSecret)
+	apiCfg := config.NewAPIConfig(dbQueries, platform, jwtSecret)
 
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 
-	// Define handler functions
-	handleApp := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "index.html")
-	})
-
 	// Register endpoints
-	mux.Handle("/app/", apiCfg.HandlerMetrics(handleApp))
+	mux.Handle("/app/", apiCfg.HandlerMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})))
 	mux.HandleFunc("GET /api/healthz", api.HandleHealthCheck)
 
 	// Serve static files from the assets directory
-	fs := http.FileServer(http.Dir("assets"))
-	mux.Handle("/app/assets/", apiCfg.HandlerMetrics(http.StripPrefix("/app/assets/", fs)))
+	mux.Handle(
+		"/app/assets/",
+		apiCfg.HandlerMetrics(http.StripPrefix("/app/assets/", http.FileServer(http.Dir("assets")))),
+	)
 
 	// Register admin endpoints
 	mux.HandleFunc("GET /admin/metrics", apiCfg.MetricsHandler)
@@ -73,13 +68,13 @@ func main() {
 	mux.HandleFunc("GET /api/chirps", api.ListChirpsHandler(dbQueries))
 	mux.HandleFunc("GET /api/chirps/{id}", api.GetChirpHandler(dbQueries))
 
-	// Server configuration
+	// Server configuration and start
 	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: mux,
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	// Start the server
-	log.Println("Starting server on port", port)
+	log.Printf("Starting server on port %s", port)
 	log.Fatal(server.ListenAndServe())
 }

@@ -43,6 +43,7 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 
 // ValidateJWT parses and validates a JWT, returning the userID if valid.
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
+	const leeway = 5 * time.Second
 	// We will parse the token into a struct that includes or is RegisteredClaims
 	// as that's what was used to create the token.
 	claims := &jwt.RegisteredClaims{}
@@ -56,7 +57,7 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 		return []byte(tokenSecret), nil
 	},
 		// Add leeway to account for potential clock drift
-		jwt.WithLeeway(5*time.Second),
+		jwt.WithLeeway(leeway),
 	)
 
 	if err != nil {
@@ -99,9 +100,10 @@ func GetBearerToken(headers http.Header) (string, error) {
 }
 
 // MakeRefreshToken makes a random 256 bit token
-// encoded in hex
+// encoded in hex.
 func MakeRefreshToken() (string, error) {
-	token := make([]byte, 32)
+	const tokenLength = 32
+	token := make([]byte, tokenLength)
 	_, err := rand.Read(token)
 	if err != nil {
 		return "", err

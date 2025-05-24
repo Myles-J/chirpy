@@ -2,19 +2,21 @@ package utils
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
+
+	"github.com/Myles-J/chirpy/internal/logger"
 )
 
 // RespondWithError responds to the client with a JSON payload representing an error.
 // It logs the error and the response code if it's a server error (5XX).
 func RespondWithError(w http.ResponseWriter, code int, message string, err error) {
+	logger := logger.NewLogger()
 	if err != nil {
-		slog.Error("An error occurred", "error", err)
+		logger.Error("An error occurred", "error", err)
 	}
 
-	if code > 499 {
-		slog.Error("Responding with 5XX error: ", "error", code)
+	if code >= http.StatusInternalServerError {
+		logger.Error("Responding with 5XX error: ", "error", code)
 	}
 
 	type errorResponse struct {
@@ -34,7 +36,7 @@ func RespondWithJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	data, err := json.Marshal(payload)
 	if err != nil {
-		slog.Error("Error marshalling JSON", "error", err)
+		logger.NewLogger().Error("Error marshalling JSON", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

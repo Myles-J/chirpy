@@ -1,4 +1,4 @@
-package auth
+package auth_test
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Myles-J/chirpy/internal/auth"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -18,7 +19,7 @@ import (
 // Keeping this simple as it's a single main scenario.
 func TestHashPassword(t *testing.T) {
 	password := "mysecretpassword"
-	hashedPassword, err := HashPassword(password)
+	hashedPassword, err := auth.HashPassword(password)
 
 	if err != nil {
 		t.Fatalf("HashPassword returned an error: %v", err)
@@ -38,7 +39,7 @@ func TestHashPassword(t *testing.T) {
 func TestCheckPassword(t *testing.T) {
 	// Generate a valid hash for testing
 	validPassword := "securepassword123"
-	validHash, err := HashPassword(validPassword)
+	validHash, err := auth.HashPassword(validPassword)
 	if err != nil {
 		t.Fatalf("Failed to hash password for test cases: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestCheckPassword(t *testing.T) {
 	// Iterate over the test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { // t.Run allows for subtests with names
-			err := CheckPassword(tt.hash, tt.password)
+			err := auth.CheckPassword(tt.hash, tt.password)
 
 			if tt.expectErr {
 				if err == nil {
@@ -137,7 +138,7 @@ func TestMakeJWT(t *testing.T) {
 	// Iterate over the test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tokenString, err := MakeJWT(tt.userID, tt.jwtSecret, tt.expiresIn)
+			tokenString, err := auth.MakeJWT(tt.userID, tt.jwtSecret, tt.expiresIn)
 
 			if tt.expectErr {
 				if err == nil {
@@ -165,14 +166,14 @@ func TestValidateJWT(t *testing.T) {
 	// Generate a valid token for testing
 	validUserID := uuid.New()
 	validExpiresIn := 1 * time.Minute
-	validToken, err := MakeJWT(validUserID, jwtSecret, validExpiresIn)
+	validToken, err := auth.MakeJWT(validUserID, jwtSecret, validExpiresIn)
 	if err != nil {
 		t.Fatalf("Failed to make a valid token for test cases: %v", err)
 	}
 
 	// Generate an expired token for testing
 	expiredExpiresIn := -1 * time.Minute // Expires 1 minute ago
-	expiredToken, err := MakeJWT(validUserID, jwtSecret, expiredExpiresIn)
+	expiredToken, err := auth.MakeJWT(validUserID, jwtSecret, expiredExpiresIn)
 	if err != nil {
 		t.Fatalf("Failed to make an expired token for test cases: %v", err)
 	}
@@ -249,7 +250,7 @@ func TestValidateJWT(t *testing.T) {
 	// Iterate over the test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			validatedUserID, err := ValidateJWT(tt.tokenString, tt.jwtSecret)
+			validatedUserID, err := auth.ValidateJWT(tt.tokenString, tt.jwtSecret)
 
 			if tt.expectErr {
 				if err == nil {
@@ -312,7 +313,7 @@ func TestGetBearerToken(t *testing.T) {
 	// Iterate over the test cases
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { // t.Run allows for subtests with names
-			token, err := GetBearerToken(tt.headers)
+			token, err := auth.GetBearerToken(tt.headers)
 
 			if tt.expectErr {
 				// If we expect an error
@@ -340,7 +341,7 @@ func TestGetBearerToken(t *testing.T) {
 }
 
 func TestMakeRefreshToken(t *testing.T) {
-	token, err := MakeRefreshToken()
+	token, err := auth.MakeRefreshToken()
 	if err != nil {
 		t.Fatalf("Failed to make a refresh token: %v", err)
 	}
