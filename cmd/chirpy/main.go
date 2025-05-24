@@ -9,8 +9,8 @@ import (
 	"github.com/Myles-J/chirpy/internal/api"
 	"github.com/Myles-J/chirpy/internal/config"
 	"github.com/Myles-J/chirpy/internal/database"
-
 	"github.com/Myles-J/chirpy/internal/utils"
+
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
