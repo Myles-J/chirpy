@@ -15,14 +15,16 @@ type APIConfig struct {
 	db             *database.Queries
 	platform       string
 	jwtSecret      string
+	polkaSecret    string
 }
 
 // NewAPIConfig creates a new APIConfig instance.
-func NewAPIConfig(db *database.Queries, platform string, jwtSecret string) *APIConfig {
+func NewAPIConfig(db *database.Queries, platform string, jwtSecret string, polkaSecret string) *APIConfig {
 	return &APIConfig{
-		db:        db,
-		platform:  platform,
-		jwtSecret: jwtSecret,
+		db:          db,
+		platform:    platform,
+		jwtSecret:   jwtSecret,
+		polkaSecret: polkaSecret,
 	}
 }
 

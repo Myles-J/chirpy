@@ -82,11 +82,31 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 }
 
 func ListChirpsHandler(db *database.Queries) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		dbChirps, err := db.ListChirps(context.Background())
-		if err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
-			return
+	return func(w http.ResponseWriter, r *http.Request) {
+		authorId := r.URL.Query().Get("author_id")
+		var dbChirps []database.Chirp
+		var err error
+
+		if authorId != "" {
+			parsedAuthorId, err := uuid.Parse(authorId)
+			if err != nil {
+				utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", err)
+				return
+			}
+
+			// Fetch only the chirps for this author
+			dbChirps, err = db.ListChirpsByAuthor(context.Background(), parsedAuthorId)
+			if err != nil {
+				utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
+				return
+			}
+		} else {
+			// Fetch all chirps
+			dbChirps, err = db.ListChirps(context.Background())
+			if err != nil {
+				utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
+				return
+			}
 		}
 
 		chirps := make([]Chirp, len(dbChirps))
@@ -131,6 +151,54 @@ func GetChirpHandler(db *database.Queries) http.HandlerFunc {
 	}
 }
 
+func DeleteChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		chirpID, err := uuid.Parse(idStr)
+		if err != nil {
+			utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", err)
+			return
+		}
+		token, tokenErr := auth.GetBearerToken(r.Header)
+		if tokenErr != nil {
+			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", tokenErr)
+			return
+		}
+
+		userID, validateJWTError := auth.ValidateJWT(token, tokenSecret)
+		if validateJWTError != nil {
+			utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized", validateJWTError)
+			return
+		}
+		dbChirp, err := db.GetChirp(context.Background(), chirpID)
+		if err != nil {
+			utils.RespondWithError(w, http.StatusNotFound, "Chirp not found", err)
+			return
+		}
+
+		if dbChirp.UserID != userID {
+			utils.RespondWithError(
+				w,
+				http.StatusForbidden,
+				"Forbidden",
+				errors.New("you are not the owner of this chirp"),
+			)
+			return
+		}
+
+		err = db.DeleteChirp(context.Background(), database.DeleteChirpParams{
+			ID:     chirpID,
+			UserID: userID,
+		})
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func getCleanedBody(body string, badWords map[string]struct{}) string {
 	words := strings.Split(body, " ")
 	for i, word := range words {
@@ -139,6 +207,5 @@ func getCleanedBody(body string, badWords map[string]struct{}) string {
 			words[i] = "****"
 		}
 	}
-	cleaned := strings.Join(words, " ")
-	return cleaned
+	return strings.Join(words, " ")
 }

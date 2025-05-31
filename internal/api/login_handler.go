@@ -90,6 +90,7 @@ func LoginHandler(db *database.Queries, jwtSecret string) http.HandlerFunc {
 			CreatedAt    time.Time `json:"created_at"`
 			UpdatedAt    time.Time `json:"updated_at"`
 			Email        string    `json:"email"`
+			IsChirpyRed  bool      `json:"is_chirpy_red"`
 			Token        string    `json:"token"`
 			RefreshToken string    `json:"refresh_token"`
 		}
@@ -99,6 +100,7 @@ func LoginHandler(db *database.Queries, jwtSecret string) http.HandlerFunc {
 			CreatedAt:    dbUser.CreatedAt,
 			UpdatedAt:    dbUser.UpdatedAt,
 			Email:        dbUser.Email,
+			IsChirpyRed:  dbUser.IsChirpyRed,
 			Token:        accessToken,
 			RefreshToken: refreshToken,
 		})

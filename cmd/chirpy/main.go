@@ -29,6 +29,7 @@ func main() {
 	dbURL := utils.MustGetenv("DB_URL")
 	platform := utils.MustGetenv("PLATFORM")
 	jwtSecret := utils.MustGetenv("JWT_SECRET")
+	polkaSecret := utils.MustGetenv("POLKA_SECRET")
 
 	// Database setup
 	dbConn, dbOpenErr := sql.Open("postgres", dbURL)
@@ -38,35 +39,44 @@ func main() {
 	defer dbConn.Close()
 
 	dbQueries := database.New(dbConn)
-	apiCfg := config.NewAPIConfig(dbQueries, platform, jwtSecret)
+	apiCfg := config.NewAPIConfig(dbQueries, platform, jwtSecret, polkaSecret)
 
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 
-	// Register endpoints
+	// --- Static and App Endpoints ---
 	mux.Handle("/app/", apiCfg.HandlerMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "index.html")
 	})))
-	mux.HandleFunc("GET /api/healthz", api.HandleHealthCheck)
-
-	// Serve static files from the assets directory
 	mux.Handle(
 		"/app/assets/",
 		apiCfg.HandlerMetrics(http.StripPrefix("/app/assets/", http.FileServer(http.Dir("assets")))),
 	)
 
-	// Register admin endpoints
+	// --- Health Check Endpoint ---
+	mux.HandleFunc("GET /api/healthz", api.HandleHealthCheck)
+
+	// --- Admin Endpoints ---
 	mux.HandleFunc("GET /admin/metrics", apiCfg.MetricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.ResetHandler)
 
-	// Register API endpoints
+	// --- Authentication Endpoints ---
 	mux.HandleFunc("POST /api/login", api.LoginHandler(dbQueries, jwtSecret))
 	mux.HandleFunc("POST /api/refresh", api.RefreshHandler(dbQueries, jwtSecret))
 	mux.HandleFunc("POST /api/revoke", api.RevokeHandler(dbQueries))
-	mux.HandleFunc("POST /api/chirps", api.CreateChirpHandler(dbQueries, jwtSecret))
+
+	// --- User Endpoints ---
 	mux.HandleFunc("POST /api/users", api.CreateUserHandler(dbQueries))
+	mux.HandleFunc("PUT /api/users", api.UpdateUserHandler(dbQueries, jwtSecret))
+
+	// --- Chirp Endpoints ---
+	mux.HandleFunc("POST /api/chirps", api.CreateChirpHandler(dbQueries, jwtSecret))
+	mux.HandleFunc("DELETE /api/chirps/{id}", api.DeleteChirpHandler(dbQueries, jwtSecret))
 	mux.HandleFunc("GET /api/chirps", api.ListChirpsHandler(dbQueries))
 	mux.HandleFunc("GET /api/chirps/{id}", api.GetChirpHandler(dbQueries))
+
+	// ---- Polka Endpoint ----
+	mux.HandleFunc("POST /api/polka/webhooks", api.PolkaWebhookHandler(dbQueries, polkaSecret))
 
 	// Server configuration and start
 	server := &http.Server{
