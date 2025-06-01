@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -83,40 +84,50 @@ func CreateChirpHandler(db *database.Queries, tokenSecret string) http.HandlerFu
 
 func ListChirpsHandler(db *database.Queries) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authorId := r.URL.Query().Get("author_id")
-		var dbChirps []database.Chirp
-		var err error
+		ctx := context.Background()
+		query := r.URL.Query()
+		authorIDStr := query.Get("author_id")
+		sortParam := query.Get("sort")
 
-		if authorId != "" {
-			parsedAuthorId, err := uuid.Parse(authorId)
-			if err != nil {
-				utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", err)
+		var (
+			dbChirps []database.Chirp
+			err      error
+		)
+
+		if authorIDStr != "" {
+			parsedAuthorID, parseErr := uuid.Parse(authorIDStr)
+			if parseErr != nil {
+				utils.RespondWithError(w, http.StatusBadRequest, "Bad Request", parseErr)
 				return
 			}
-
-			// Fetch only the chirps for this author
-			dbChirps, err = db.ListChirpsByAuthor(context.Background(), parsedAuthorId)
-			if err != nil {
-				utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
-				return
-			}
+			dbChirps, err = db.ListChirpsByAuthor(ctx, parsedAuthorID)
 		} else {
-			// Fetch all chirps
-			dbChirps, err = db.ListChirps(context.Background())
-			if err != nil {
-				utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
-				return
-			}
+			dbChirps, err = db.ListChirps(ctx)
+		}
+		if err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error", err)
+			return
+		}
+
+		switch sortParam {
+		case "desc":
+			sort.Slice(dbChirps, func(i, j int) bool {
+				return dbChirps[i].CreatedAt.After(dbChirps[j].CreatedAt)
+			})
+		case "asc":
+			sort.Slice(dbChirps, func(i, j int) bool {
+				return dbChirps[i].CreatedAt.Before(dbChirps[j].CreatedAt)
+			})
 		}
 
 		chirps := make([]Chirp, len(dbChirps))
-		for i, dbChirp := range dbChirps {
+		for i := range dbChirps {
 			chirps[i] = Chirp{
-				ID:        dbChirp.ID,
-				CreatedAt: dbChirp.CreatedAt,
-				UpdatedAt: dbChirp.UpdatedAt,
-				Body:      dbChirp.Body,
-				UserID:    dbChirp.UserID,
+				ID:        dbChirps[i].ID,
+				CreatedAt: dbChirps[i].CreatedAt,
+				UpdatedAt: dbChirps[i].UpdatedAt,
+				Body:      dbChirps[i].Body,
+				UserID:    dbChirps[i].UserID,
 			}
 		}
 
